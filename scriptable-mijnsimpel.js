@@ -104,6 +104,33 @@ async function fetchSid(cookies) {
 }
 
 /**
+ * Fetches the usage data from the API.
+ * 
+ * @param sid 
+ * @param cookies 
+ * @returns 
+ */
+async function fetchData(sid, cookies) {
+  try {
+    const url = `https://mijn.simpel.nl/api/usage/usage-summary?sid=${sid}`;
+    let req = new Request(url);
+    req.headers = { "Cookie": cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; ") };
+
+    await req.load();
+    
+    if (req.response.statusCode === 200) {
+      return json = await req.loadJSON()
+    } else {
+      console.error('Request failed with status:', req.response.statusCode);
+      return { errorCode: req.response.statusCode };
+    }
+  } catch (error) {
+    console.error(error);
+    return { errorCode: -1 };
+  }
+}
+
+/**
  * Adds a text element to the stack with the specified text and color.
  *
  * @param stack
@@ -125,6 +152,17 @@ function addStackText(stack, text, color) {
  */
 function addUsage(stack, icon, data) {
   addStackText(stack, icon + " " + (data.type === "unlimited" ? "∞" : data.amount + "/" + data.totalAmount));
+}
+
+const COLORS = {
+  standard: {
+    start: new Color("#79248C"),
+    end: new Color("#50185c")
+  },
+  error: {
+    start: new Color("#D44646"),
+    end: new Color("#822424")
+  }
 }
 
 /**
@@ -149,11 +187,10 @@ async function run() {
     sid = getCachedData("sid.json");
   }
 
-  const url = `https://mijn.simpel.nl/api/usage/usage-summary?sid=${sid}`;
-  let req = new Request(url);
-  req.headers = { "Cookie": cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; ") };
+  let json = undefined;
+  let colors = undefined;
 
-  let json = await req.loadJSON();
+  json = await fetchData(sid, cookies);
 
   // Create the widget
   let widget = new ListWidget();
@@ -169,9 +206,18 @@ async function run() {
   stack.layoutVertically();
   stack.spacing = 5;
 
-  addUsage(stack, "📶 ", json.data);
-  addUsage(stack, "💬 ", json.sms);
-  addUsage(stack, "☎️ ", json.voice);
+  if (json.errorCode === undefined) {
+    colors = COLORS.standard;
+
+    addUsage(stack, "📶 ", json.data);
+    addUsage(stack, "💬 ", json.sms);
+    addUsage(stack, "☎️ ", json.voice);
+  }
+  else {
+    colors = COLORS.error;
+
+    addStackText(stack, `Error loading data (${json.errorCode})`, Color.white());
+  }
 
   widget.addSpacer();
 
@@ -182,7 +228,7 @@ async function run() {
 
   // Set the gradient background
   let gradient = new LinearGradient();
-  gradient.colors = [new Color("#79248C"), new Color("#50185c")];
+  gradient.colors = [colors.start, colors.end];
   gradient.locations = [0.0, 1.0];
   widget.backgroundGradient = gradient;
 
